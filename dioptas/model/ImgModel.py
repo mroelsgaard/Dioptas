@@ -196,7 +196,8 @@ class ImgModel(object):
             if np.prod(im.size) <= 1:
                 im.close()
                 return False
-            data["img_data"] = np.array(im)[::-1]
+            # I prefer omitting [::-1]
+            data["img_data"] = np.array(im)
             try:
                 data["file_info"] = self._get_file_info(im)
                 data["motors_info"] = self._get_motors_info(im)
