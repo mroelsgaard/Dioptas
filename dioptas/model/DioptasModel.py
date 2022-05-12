@@ -19,16 +19,16 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
-from scipy.interpolate import interp1d, interp2d
+from scipy.interpolate import interp2d
 import numpy as np
 
 import h5py
 
 from .util import Signal
 from .util import jcpds
-from .util import Pattern
+from .util.Pattern import Pattern, combine_patterns
 from .Configuration import Configuration
-from . import ImgModel, CalibrationModel, MaskModel, PhaseModel, PatternModel, OverlayModel
+from . import ImgModel, CalibrationModel, MaskModel, PhaseModel, PatternModel, OverlayModel, BatchModel
 from .. import __version__
 
 
@@ -59,6 +59,14 @@ class DioptasModel(object):
         self.pattern_changed = Signal()
         self.cake_changed = Signal()
         self.enabled_phases_in_cake = Signal()
+
+        self.clicked_tth = 0
+        self.clicked_azi = 0
+
+        self.clicked_tth_changed = Signal()
+        self.clicked_azi_changed = Signal()
+        self.clicked_tth_changed.connect(self.update_clicked_tth)
+        self.clicked_azi_changed.connect(self.update_clicked_azi)
 
         self.connect_models()
 
@@ -302,7 +310,7 @@ class DioptasModel(object):
     @property
     def batch_model(self):
         """
-        :rtype: ImgModel
+        :rtype: BatchModel
         """
         return self.configurations[self.configuration_ind].batch_model
 
@@ -425,45 +433,20 @@ class DioptasModel(object):
 
     @property
     def pattern(self):
+        """
+        :rtype: Pattern
+        """
         if not self.combine_patterns:
             return self.pattern_model.pattern
         else:
-            x_min = []
-            for ind in range(0, len(self.configurations)):
-                # determine ranges
-                x = self.configurations[ind].pattern_model.pattern.x
-                x_min.append(np.min(x))
-
-            sorted_pattern_ind = np.argsort(x_min)
-
-            pattern = self.configurations[sorted_pattern_ind[0]].pattern_model.pattern
-            for ind in sorted_pattern_ind[1:]:
-                x1, y1 = pattern.data
-                x2, y2 = self.configurations[ind].pattern_model.pattern.data
-
-                pattern2_interp1d = interp1d(x2, y2, kind='linear')
-
-                overlap_ind_pattern1 = np.where((x1 <= np.max(x2)) & (x1 >= np.min(x2)))[0]
-                left_ind_pattern1 = np.where((x1 <= np.min(x2)))[0]
-                right_ind_pattern2 = np.where((x2 >= np.max(x1)))[0]
-
-                combined_x1 = x1[left_ind_pattern1]
-                combined_y1 = y1[left_ind_pattern1]
-                combined_x2 = x1[overlap_ind_pattern1]
-                combined_y2 = (y1[overlap_ind_pattern1] + pattern2_interp1d(combined_x2)) / 2
-                combined_x3 = x2[right_ind_pattern2]
-                combined_y3 = y2[right_ind_pattern2]
-
-                combined_x = np.hstack((combined_x1, combined_x2, combined_x3))
-                combined_y = np.hstack((combined_y1, combined_y2, combined_y3))
-
-                pattern = Pattern(combined_x, combined_y)
-
-            pattern.name = "Combined Pattern"
-            return pattern
+            patterns = [configuration.pattern_model.pattern for configuration in self.configurations]
+            return combine_patterns(patterns)
 
     @property
     def combine_patterns(self):
+        """
+        :rtype: bool
+        """
         return self._combine_patterns
 
     @combine_patterns.setter
@@ -471,8 +454,18 @@ class DioptasModel(object):
         self._combine_patterns = new_val
         self.pattern_changed.emit()
 
+    def save_combined_pattern(self, filename):
+        """
+        Saves the current integrated pattern
+        :param filename: where to save the file
+        """
+        self.pattern.save(filename, unit=self.integration_unit)
+
     @property
     def combine_cakes(self):
+        """
+        :rtype: bool
+        """
         return self._combine_cakes
 
     @combine_cakes.setter
@@ -590,3 +583,9 @@ class DioptasModel(object):
             attr = getattr(self, member)
             if isinstance(attr, Signal):
                 attr.blocked = block
+
+    def update_clicked_tth(self, tth):
+        self.clicked_tth = tth
+
+    def update_clicked_azi(self, azi):
+        self.clicked_azi = azi

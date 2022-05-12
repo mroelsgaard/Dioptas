@@ -18,29 +18,24 @@ jobs:
     - name: Use Miniconda
       uses: s-weigand/setup-conda@v1
 
-    - name: Get information about conda
-      run: |
-        conda info
-        conda list
-        conda config --show-sources
-        conda config --show
-        which python
-        which conda
-        which pip
-
-
-    - name: install pip
-      run: conda install pip -y
+    - name: switch to python=3.8 and install pip
+      run: conda install python=3.10 pip -y
 
     - name: Install Pip Dependencies
       run: |
         pip install pycifrw pandas python-dateutil h5py scikit-image pyqt5 future qtpy pyfai lmfit pyepics \
-                    pyinstaller cython watchdog pyopengl pyopengl-accelerate h5py hdf5plugin pyqtgraph
+                    pyinstaller cython watchdog h5py hdf5plugin pyqtgraph sharedmem \
+                    cython
+    - name: Update Pyinstaller Hooks
+      run: |
+        pip uninstall pyinstaller-hooks-contrib -y
+        git clone https://github.com/pyinstaller/pyinstaller-hooks-contrib.git
+        cd pyinstaller-hooks-contrib
+        python setup.py install
+        cd ..
 
-#    - name: Compile smooth_bruckner
-#      run: |
-#        cd dioptas/model/util/
-#        f2py -c -m smooth_bruckner smooth_bruckner.f95
+    - name: Compile Smooth Bruckner
+      run: cythonize -a -i dioptas/model/util/smooth_bruckner_cython.pyx
 
     - name: Run Dioptas from source to test and create version file
       run: python Dioptas.py test

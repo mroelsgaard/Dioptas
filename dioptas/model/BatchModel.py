@@ -70,6 +70,8 @@ class BatchModel(QtCore.QObject):
             if file[-4:] == '.tif':
                 n_img = 1
             else:
+                if not os.path.exists(file):
+                    return
                 self.calibration_model.img_model.load(file)
                 n_img = self.calibration_model.img_model.series_max
             image_counter += n_img
@@ -94,15 +96,17 @@ class BatchModel(QtCore.QObject):
 
         try:
             cal_file = str(data_file.attrs['calibration'])
-            self.calibration_model.load(cal_file)
+            if os.path.isfile(cal_file):
+                self.calibration_model.load(cal_file)
         except KeyError:
             logger.info("Calibration info is not found")
-        except FileNotFoundError:
-            logger.info("Calibration file is not found")
 
         if 'mask' in data_file.attrs:
-            mask_file = data_file.attrs['mask']
-            self.mask_model.load_mask(mask_file)
+            try:
+                mask_file = data_file.attrs['mask']
+                self.mask_model.load_mask(mask_file)
+            except FileNotFoundError:
+                logger.info("Mask file is not found")
 
         if 'bkg' in data_file:
             self.data = data_file['bkg'][()]
@@ -130,11 +134,12 @@ class BatchModel(QtCore.QObject):
             self.files = data_file['processed/process/files'][()].astype('U')
             self.pos_map = data_file['processed/process/pos_map'][()]
 
-            self.used_calibration = str(data_file['processed/process/cal_file'][()])
-            try:
+            if isinstance(data_file['processed/process/cal_file'][()], bytes):
+                self.used_calibration = str(data_file['processed/process/cal_file'][()].decode("utf-8"))
+            else:
+                self.used_calibration = str(data_file['processed/process/cal_file'][()])
+            if os.path.isfile(self.used_calibration):
                 self.calibration_model.load(self.used_calibration)
-            except FileNotFoundError:
-                pass
 
             if 'mask' in data_file['processed/process/']:
                 mask = data_file['processed/process/mask'][()]
@@ -142,10 +147,13 @@ class BatchModel(QtCore.QObject):
                 self.mask_model.set_mask(mask)
 
             if 'mask_file' in data_file['processed/process/']:
-                self.used_mask = str(data_file['processed/process/mask_file'][()])
-                mask_data = np.array(Image.open(self.used_mask))
-                self.mask_model.set_dimension(mask_data.shape)
-                self.mask_model.load_mask(self.used_mask)
+                try:
+                    self.used_mask = str(data_file['processed/process/mask_file'][()])
+                    mask_data = np.array(Image.open(self.used_mask))
+                    self.mask_model.set_dimension(mask_data.shape)
+                    self.mask_model.load_mask(self.used_mask)
+                except FileNotFoundError:
+                    logger.info(f"Mask file {self.used_mask} is not found")
 
             if 'bkg' in data_file['processed/process/']:
                 self.bkg = data_file['processed/process/bkg'][()]
@@ -204,23 +212,26 @@ class BatchModel(QtCore.QObject):
         y = np.arange(self.n_img)[None, :].repeat(self.binning.shape[0], axis=0).flatten()
         np.savetxt(filename, np.array(list(zip(x, y, self.data.T.flatten()))), delimiter=',', fmt='%f')
 
-    def integrate_raw_data(self, num_points, start, stop, step, use_all=False, progress_dialog=None):
+    def integrate_raw_data(self, num_points, start, stop, step, use_all=False, callback_fn=None,
+                           use_mask=False):
         """
         Integrate images from given file
 
-        :param progress_dialog: Progress dialog to show progress
         :param num_points: Numbers of radial bins
-        :param start: Start image index fro integration
-        :param stop: Stop image index fro integration
+        :param start: Start image index from integration
+        :param stop: Stop image index from integration
         :param step: Step along images to integrate
         :param use_all: Use all images. If False use only images, that were already integrated.
+        :param callback_fn: callback function which is called each iteration with the current image number as parameter,
+                            if it returns False the integration will be aborted.
+        :param use_mask: use mask if True
         """
         intensity_data = []
         binning_data = []
         pos_map = []
         image_counter = 0
         current_file = ''
-        if self.mask_model.mode:
+        if use_mask:
             if self.mask_model.filename != '':
                 self.used_mask = self.mask_model.filename
             mask = self.mask_model.get_mask()
@@ -237,19 +248,17 @@ class BatchModel(QtCore.QObject):
                 current_file = file_index
                 self.calibration_model.img_model.load(self.files[file_index])
 
-            if progress_dialog is not None and progress_dialog.wasCanceled():
-                break
-
             self.calibration_model.img_model.load_series_img(pos)
             binning, intensity = self.calibration_model.integrate_1d(num_points=num_points,
                                                                      mask=mask)
             image_counter += 1
-            if progress_dialog is not None:
-                progress_dialog.setValue(image_counter)
-
             pos_map.append((file_index, pos))
             intensity_data.append(intensity)
             binning_data.append(binning)
+
+            if callback_fn is not None:
+                if not callback_fn(image_counter):
+                    break
 
         # deal with different x lengths due to trimmed zeros:
         binning_lengths = [len(binning) for binning in binning_data]
@@ -268,9 +277,10 @@ class BatchModel(QtCore.QObject):
         self.pos_map = np.array(pos_map)
         self.binning = np.array(binning)
         self.data = np.array(intensity_data)
+        self.bkg = None
         self.n_img = self.data.shape[0]
 
-    def extract_background(self, parameters, progress_dialog=None):
+    def extract_background(self, parameters, callback_fn=None):
         """
         Subtract background calculated with respect of given parameters
         """
@@ -278,11 +288,9 @@ class BatchModel(QtCore.QObject):
         bkg = np.zeros(self.data.shape)
         for i, y in enumerate(self.data):
 
-            if progress_dialog is not None:
-                if progress_dialog.wasCanceled():
+            if callback_fn is not None:
+                if not callback_fn(i):
                     break
-                progress_dialog.setValue(i)
-
             bkg[i] = extract_background(self.binning, y, *parameters)
         self.bkg = bkg
 

@@ -126,6 +126,7 @@ class Configuration(object):
         """
         Saves the current integrated pattern. The format depends on the file ending. Possible file formats:
             [*.xy, *.chi, *.dat, *.fxye]
+        :param filename: where to save the file
         :param subtract_background: flat whether the pattern should be saved with or without subtracted background
         """
         if filename is None:
@@ -149,9 +150,9 @@ class Configuration(object):
             filename = self.img_model.filename
 
         if filename.endswith('.xy'):
-            self.pattern_model.save_background_as_pattern(filename, header=self._create_xy_header())
+            self.pattern_model.save_auto_background_as_pattern(filename, header=self._create_xy_header())
         elif filename.endswith('.fxye'):
-            self.pattern_model.save_background_as_pattern(filename, header=self._create_fxye_header(filename))
+            self.pattern_model.save_auto_background_as_pattern(filename, header=self._create_fxye_header(filename))
         else:
             self.pattern_model.save_pattern(filename)
 
@@ -293,11 +294,15 @@ class Configuration(object):
         :param old_unit: possible values are '2th_deg', 'q_A^-1', 'd_A'
         :param new_unit: possible values are '2th_deg', 'q_A^-1', 'd_A'
         """
-        self.pattern_model.pattern.auto_background_subtraction_parameters = \
-            convert_units(self.pattern_model.pattern.auto_background_subtraction_parameters[0],
+        par_0 = convert_units(self.pattern_model.pattern.auto_background_subtraction_parameters[0],
                           self.calibration_model.wavelength,
                           old_unit,
-                          new_unit), \
+                          new_unit)
+        # Value of 0.1 let background subtraction algorithm work without crash.
+        if np.isnan(par_0):
+            par_0 = 0.1
+        self.pattern_model.pattern.auto_background_subtraction_parameters = \
+            par_0, \
             self.pattern_model.pattern.auto_background_subtraction_parameters[1], \
             self.pattern_model.pattern.auto_background_subtraction_parameters[2]
 
@@ -641,8 +646,8 @@ class Configuration(object):
         transformation_list = []
         for key, transformation in transformation_group.attrs.items():
             transformation_list.append(transformation)
-        self.img_model.load_transformations_string_list(transformation_list)
         self.calibration_model.load_transformations_string_list(transformation_list)
+        self.img_model.load_transformations_string_list(transformation_list)
 
         # load roi data
         if f.get('image_model').attrs['has_roi']:

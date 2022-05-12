@@ -341,9 +341,26 @@ class CalibrationModelTest(QtTest):
         _, y4 = self.calibration_model.cake_integral(cake_tth[30] + 0.5 * cake_step, bins=2)
         self.assertTrue(np.array_equal(y4, cake_partial))
 
-        cake_partial = (0.5 * cake_img[:, 29] + cake_img[:, 30] + 0.5 * cake_img[:, 31])/2
+        cake_partial = (0.5 * cake_img[:, 29] + cake_img[:, 30] + 0.5 * cake_img[:, 31]) / 2
         _, y5 = self.calibration_model.cake_integral(cake_tth[30], bins=2)
         self.assertTrue(np.array_equal(y5, cake_partial))
+
+    def test_transforms_without_predefined_detector(self):
+        self.img_model.load(os.path.join(data_path, 'image_001.tif'))
+        self.calibration_model.rotate_detector_p90()
+        self.calibration_model.rotate_detector_m90()
+        self.calibration_model.flip_detector_horizontally()
+        self.calibration_model.img_model.flip_img_horizontally()
+        self.calibration_model.flip_detector_horizontally()
+
+    def test_transforms_without_predefined_detector_changing_shape(self):
+        self.img_model.load(os.path.join(data_path, 'image_001.tif'))
+        self.calibration_model.rotate_detector_p90()
+        self.img_model.load(os.path.join(data_path, 'CeO2_Pilatus1M.tif'))
+        self.calibration_model.rotate_detector_m90()
+        self.calibration_model.flip_detector_horizontally()
+        self.calibration_model.img_model.flip_img_horizontally()
+        self.calibration_model.flip_detector_horizontally()
 
     def test_load_detector_list(self):
         names, classes = get_available_detectors()
@@ -471,20 +488,31 @@ class CalibrationModelTest(QtTest):
         self.assertAlmostEqual(detector.pixel1, 50e-6)
         self.assertFalse(detector.uniform_pixel)
 
-    def test_integrate1d_with_different_detector_and_image_shape(self):
+    def test_load_image_with_different_shape_than_previous_defined_detector(self):
         self.calibration_model.load_detector('Pilatus CdTe 1M')
         self.calibration_model.load(os.path.join(data_path, 'CeO2_Pilatus1M.poni'))
-        self.img_model.load(os.path.join(data_path, 'LaB6_40keV_MarCCD.tif'))
         callback_function = MagicMock()
         self.calibration_model.detector_reset.connect(callback_function)
+        self.img_model.load(os.path.join(data_path, 'LaB6_40keV_MarCCD.tif'))
+
+    def test_change_detector_after_loading_image_with_different_shapes_integrate_1d(self):
+        self.img_model.load(os.path.join(data_path, 'LaB6_40keV_MarCCD.tif'))
+        self.calibration_model.load(os.path.join(data_path, 'CeO2_Pilatus1M.poni'))
+        self.calibration_model.integrate_1d()
+
+        callback_function = MagicMock()
+        self.calibration_model.detector_reset.connect(callback_function)
+        self.calibration_model.load_detector('Pilatus CdTe 1M')
         self.calibration_model.integrate_1d()
         callback_function.assert_called_once()
 
-    def test_integrate2d_with_different_detector_and_image_shape(self):
-        self.calibration_model.load_detector('Pilatus CdTe 1M')
-        self.calibration_model.load(os.path.join(data_path, 'CeO2_Pilatus1M.poni'))
+    def test_change_detector_after_loading_image_with_different_shapes_integrate_2d(self):
         self.img_model.load(os.path.join(data_path, 'LaB6_40keV_MarCCD.tif'))
+        self.calibration_model.load(os.path.join(data_path, 'CeO2_Pilatus1M.poni'))
+        self.calibration_model.integrate_1d()
+
         callback_function = MagicMock()
         self.calibration_model.detector_reset.connect(callback_function)
+        self.calibration_model.load_detector('Pilatus CdTe 1M')
         self.calibration_model.integrate_2d()
         callback_function.assert_called_once()

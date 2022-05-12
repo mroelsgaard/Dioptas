@@ -247,8 +247,8 @@ class CalibrationController(object):
         self.update_detector_parameters_in_view()
 
     def _update_pixel_size_in_gui(self):
-        self.widget.set_pixel_size(self.model.calibration_model.orig_pixel1,
-                                   self.model.calibration_model.orig_pixel2)
+        self.widget.set_pixel_size(self.model.calibration_model.orig_pixel2,
+                                   self.model.calibration_model.orig_pixel1)
 
     def _update_spline_in_gui(self):
         if self.model.calibration_model.detector.splineFile is not None:
@@ -532,9 +532,9 @@ class CalibrationController(object):
 
         # get options
         algorithm = str(self.widget.options_peaksearch_algorithm_cb.currentText())
-        delta_tth = np.float(self.widget.options_delta_tth_txt.text())
-        intensity_min_factor = np.float(self.widget.options_intensity_mean_factor_sb.value())
-        intensity_max = np.float(self.widget.options_intensity_limit_txt.text())
+        delta_tth = float(self.widget.options_delta_tth_txt.text())
+        intensity_min_factor = float(self.widget.options_intensity_mean_factor_sb.value())
+        intensity_max = float(self.widget.options_intensity_limit_txt.text())
 
         self.model.calibration_model.setup_peak_search_algorithm(algorithm)
 
@@ -616,9 +616,9 @@ class CalibrationController(object):
         :type state: bool
         """
         if state:
-            self.widget.img_widget.update_pen([255, 0, 0, 100])
+            self.widget.img_widget.set_mask_color([255, 0, 0, 100])
         else:
-            self.widget.img_widget.update_pen([255, 0, 0, 255])
+            self.widget.img_widget.set_mask_color([255, 0, 0, 255])
 
     def update_all(self, integrate=True):
         """
