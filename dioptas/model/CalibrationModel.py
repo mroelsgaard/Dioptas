@@ -252,9 +252,10 @@ class CalibrationModel(object):
 
         keep = int(np.ceil(np.sqrt(size2)))
         try:
+            old_stdout = sys.stdout
             sys.stdout = DummyStdOut
             res = self.peak_search_algorithm.peaks_from_area(mask2, Imin=mean - std, keep=keep)
-            sys.stdout = sys.__stdout__
+            sys.stdout = old_stdout
         except IndexError:
             res = []
 
@@ -846,7 +847,8 @@ class CalibrationModel(object):
         """
         :param transform_function: function pointer which will affect the dx, dy and pixel corners of the detector
         """
-        self.detector._pixel_corners = np.ascontiguousarray(transform_function(self.detector.get_pixel_corners()))
+        if self.detector._pixel_corners is not None:
+            self.detector._pixel_corners = np.ascontiguousarray(transform_function(self.detector.get_pixel_corners()))
 
     def _swap_pixel_size(self):
         """swaps the pixel sizes"""
